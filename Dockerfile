@@ -6,17 +6,19 @@ WORKDIR /app
 COPY *.csproj ./
 RUN dotnet restore
 
-# Copy everything else and publish
+# Copy all files and publish
 COPY . ./
 RUN dotnet publish -c Release -o out
 
 # Stage 2: Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
+
+# Copy published files from build stage
 COPY --from=build /app/out .
 
-# Expose port 8080 (Render default)
+# Expose port 8080 (Render expects this)
 EXPOSE 8080
 
-# Run your backend
+# Run your backend DLL
 ENTRYPOINT ["dotnet", "SushiBE.dll"]
