@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.20" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Abstractions" Version="9.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.9">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.9">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="QuestPDF" Version="2025.7.3" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="wwwroot\Images\05ba2a06-921e-42bb-858e-ba40d9400425.png" />
+    <None Include="wwwroot\Images\16a67f97-147a-4187-b906-46e0c725417f.png" />
+    <None Include="wwwroot\Images\17196f3a-6db9-4bd9-bdea-0abf0afb3f22.png" />
+    <None Include="wwwroot\Images\23053800-2718-4aef-ac11-74529c2b867f.png" />
+    <None Include="wwwroot\Images\3b89b1b6-1d87-4222-8389-2a5bcf8e31d8.png" />
+    <None Include="wwwroot\Images\40b02dad-2d90-4f95-8ef0-3029539c4ffd.png" />
+    <None Include="wwwroot\Images\514b243b-f0e8-48b8-b7e2-7496626adf89.png" />
+    <None Include="wwwroot\Images\5b31f557-0807-446c-bd38-2d9efdffbcca.png" />
+    <None Include="wwwroot\Images\65a9d66f-a5a7-49e4-89e0-7990ea7ad85a.png" />
+    <None Include="wwwroot\Images\6c632c81-18a4-4105-9496-949a274e00a2.png" />
+    <None Include="wwwroot\Images\743e9db4-41b3-451c-9bde-dbe52358417d.jpg" />
+    <None Include="wwwroot\Images\7df21183-d42b-4f4a-be30-5cda803d73a7.png" />
+    <None Include="wwwroot\Images\cb0e5bb5-b4ef-4da7-819c-c0619329cef3.png" />
+    <None Include="wwwroot\Images\d1a92119-3cf6-4638-bdc4-76ef9b4ec02f.jpeg" />
+    <None Include="wwwroot\Images\d2b21846-073c-4a7a-bea5-f340fafb5f95.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Migrations\" />
+  </ItemGroup>
+
+</Project>

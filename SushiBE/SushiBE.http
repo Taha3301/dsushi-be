@@ -1,0 +1,6 @@
+@SushiBE_HostAddress = http://localhost:5198
+
+GET {{SushiBE_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
