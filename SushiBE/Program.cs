@@ -11,6 +11,7 @@ using System.IO;
 using SushiBE.Services;
 using QuestPDF; // required for license
 using QuestPDF.Infrastructure; // required for LicenseType
+using Npgsql.EntityFrameworkCore.PostgreSQL; // Add this using directive at the top of the file
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -41,8 +42,12 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]))
     };
 });
+
 builder.Services.AddDbContext<SushiDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(
+        builder.Configuration.GetConnectionString("DefaultConnection")
+    )
+);
 
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();

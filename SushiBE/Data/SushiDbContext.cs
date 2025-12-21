@@ -111,10 +111,12 @@ namespace SushiBE.Data
             {
                 entity.HasKey(c => c.CanOrderId);
                 entity.Property(c => c.IsEnabled).IsRequired();
-                entity.Property(c => c.OnDate).HasColumnType("datetime2");
-                entity.Property(c => c.OffDate).HasColumnType("datetime2");
-                // No navigation properties, no foreign keys, no HasOne/WithMany calls
+
+                // خلّي EF/Npgsql يختار النوع الصحيح
+                entity.Property(c => c.OnDate);
+                entity.Property(c => c.OffDate);
             });
+
         }
     }
 }

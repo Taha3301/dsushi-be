@@ -20,7 +20,7 @@ namespace SushiBE.Models
 
         public bool IsVerified { get; set; } = false;
 
-        [Column(TypeName = "nvarchar(255)")]
+        [MaxLength(255)]
         public string? VerificationCode { get; set; }
 
         public DateTime? VerificationExpiry { get; set; }
