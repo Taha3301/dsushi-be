@@ -19,6 +19,21 @@ var builder = WebApplication.CreateBuilder(args);
 // If you need a commercial license, set accordingly per QuestPDF documentation.
 QuestPDF.Settings.License = LicenseType.Community;
 
+// --- CORS: allow your GitHub Pages site (adjust or add more origins as needed) ---
+var allowedOrigin = "https://taha3301.github.io";
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowGithubPages", policy =>
+    {
+        policy.WithOrigins(allowedOrigin)
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+        // If you need to send credentials (cookies) or Authorization with credentials:
+        // policy.AllowCredentials();
+    });
+});
+// ---------------------------------------------------------------------------
+
 // Add services to the container.
 builder.Services.AddControllers();
 
@@ -87,8 +102,10 @@ var app = builder.Build();
 
 // Determine images folder (configurable). Priority:
 // 1) configuration "ImagesPath" (absolute or relative to content root)
-// 2) webroot/images (wwwroot/images)
-// 3) contentRoot/images
+// 2) prefer webroot/Images (capital I) if exists
+// 3) webroot/images (lowercase)
+// 4) contentRoot/images
+// 5) default to webroot/Images (create if missing)
 string imagesPath = builder.Configuration["ImagesPath"];
 if (!string.IsNullOrWhiteSpace(imagesPath))
 {
@@ -97,16 +114,18 @@ if (!string.IsNullOrWhiteSpace(imagesPath))
 }
 else
 {
-    var webrootImages = Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "images");
+    var webrootImagesUpper = Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "Images");
+    var webrootImagesLower = Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "images");
     var contentRootImages = Path.Combine(builder.Environment.ContentRootPath, "images");
 
-    if (Directory.Exists(webrootImages))
-        imagesPath = webrootImages;
+    if (Directory.Exists(webrootImagesUpper))
+        imagesPath = webrootImagesUpper;
+    else if (Directory.Exists(webrootImagesLower))
+        imagesPath = webrootImagesLower;
     else if (Directory.Exists(contentRootImages))
         imagesPath = contentRootImages;
     else
-        // default to wwwroot/images (create if missing)
-        imagesPath = webrootImages;
+        imagesPath = webrootImagesUpper; // default to wwwroot/Images
 }
 
 // Ensure the images folder exists
@@ -125,6 +144,10 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// Add UseCors before authentication/authorization and controller routing
+app.UseCors("AllowGithubPages");
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -136,6 +159,13 @@ app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(imagesPath),
     RequestPath = "/images"
+});
+
+// Also map the capitalized path so legacy frontend requests to /Images work
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(imagesPath),
+    RequestPath = "/Images"
 });
 
 // Serve invoices folder at /invoices
