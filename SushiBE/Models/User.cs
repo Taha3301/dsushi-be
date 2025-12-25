@@ -10,13 +10,13 @@ namespace SushiBE.Models
         public Guid UserId { get; set; } = Guid.NewGuid();
 
         [Required, MaxLength(100)]
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         [Required, EmailAddress]
-        public string Email { get; set; }
+        public string Email { get; set; } = string.Empty;
 
         [Required]
-        public string PasswordHash { get; set; }
+        public string PasswordHash { get; set; } = string.Empty;
 
         public bool IsVerified { get; set; } = false;
 
@@ -26,3 +26,4 @@ namespace SushiBE.Models
         public DateTime? VerificationExpiry { get; set; }
     }
 }
+    
