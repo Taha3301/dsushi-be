@@ -123,6 +123,60 @@ namespace SushiBE.Controllers
             return Ok(data);
         }
 
+        // New endpoint: total money of all Pending orders inside a CanOrder interval
+        // GET /api/admin/orders/pending/total?canOrderId={guid}
+        // If canOrderId is not provided the method chooses the most appropriate CanOrder (prefers enabled latest).
+        [HttpGet("orders/pending/total")]
+        public async Task<IActionResult> GetPendingOrdersTotal(Guid? canOrderId = null)
+        {
+            // choose CanOrder entry
+            Models.CanOrder canOrder = null;
+            if (canOrderId.HasValue)
+            {
+                canOrder = await _db.CanOrders.FindAsync(canOrderId.Value);
+                if (canOrder == null)
+                    return NotFound(new { error = "CanOrder not found", canOrderId });
+            }
+            else
+            {
+                // prefer enabled latest, otherwise latest record
+                canOrder = await _db.CanOrders
+                    .Where(c => c.IsEnabled && c.OnDate != null)
+                    .OrderByDescending(c => c.OnDate)
+                    .FirstOrDefaultAsync();
+
+                if (canOrder == null)
+                {
+                    canOrder = await _db.CanOrders
+                        .OrderByDescending(c => c.OnDate ?? DateTime.MinValue)
+                        .FirstOrDefaultAsync();
+                }
+
+                if (canOrder == null)
+                    return BadRequest(new { error = "No CanOrder entries available. Provide canOrderId or create a CanOrder with OnDate/OffDate." });
+            }
+
+            // Resolve interval: use OnDate as start (or very early) and OffDate as end (or now)
+            var start = canOrder.OnDate?.Date ?? DateTime.MinValue;
+            var end = (canOrder.OffDate ?? DateTime.UtcNow).Date.AddDays(1).AddTicks(-1);
+
+            // Sum total amount of orders with Status == "Pending" in interval
+            var totalPendingAmount = await _db.Orders
+                .Where(o => o.OrderDate >= start && o.OrderDate <= end && o.Status == "Pending")
+                .SumAsync(o => (decimal?)o.TotalAmount) ?? 0m;
+
+            var pendingOrdersCount = await _db.Orders
+                .CountAsync(o => o.OrderDate >= start && o.OrderDate <= end && o.Status == "Pending");
+
+            return Ok(new
+            {
+                CanOrderId = canOrder.CanOrderId,
+                Interval = new { From = start, To = end },
+                TotalPendingAmount = Math.Round(totalPendingAmount, 2),
+                TotalPendingOrders = pendingOrdersCount
+            });
+        }
+
         // GET /api/admin/top-products?limit=10
         [HttpGet("top-products")]
         public async Task<IActionResult> GetTopProducts(int limit = 10)
