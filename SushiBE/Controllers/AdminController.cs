@@ -217,6 +217,140 @@ namespace SushiBE.Controllers
             return Ok(new { Customers = customers, Admins = admins, Total = customers + admins });
         }
 
+        // GET /api/admin/stock/requirements
+        // Optional query param: canOrderId (GUID). If not provided, uses the most recent CanOrder (prefers enabled).
+        // It sums all OrderItem quantities for Orders whose OrderDate is inside the CanOrder interval,
+        // then computes ingredient totals using the "per 7" recipe:
+        // per 7 items => 300 g rice, 400 ml water, 60 ml vinegar, 15 g sugar, 5 g salt.
+        [HttpGet("stock/requirements")]
+        public async Task<IActionResult> GetStockRequirements(Guid? canOrderId = null)
+        {
+            // choose CanOrder entry
+            Models.CanOrder canOrder = null;
+            if (canOrderId.HasValue)
+            {
+                canOrder = await _db.CanOrders.FindAsync(canOrderId.Value);
+                if (canOrder == null)
+                    return NotFound(new { error = "CanOrder not found", canOrderId });
+            }
+            else
+            {
+                // prefer enabled latest, otherwise latest record
+                canOrder = await _db.CanOrders
+                    .Where(c => c.IsEnabled && c.OnDate != null)
+                    .OrderByDescending(c => c.OnDate)
+                    .FirstOrDefaultAsync();
+
+                if (canOrder == null)
+                {
+                    canOrder = await _db.CanOrders
+                        .OrderByDescending(c => c.OnDate ?? DateTime.MinValue)
+                        .FirstOrDefaultAsync();
+                }
+
+                if (canOrder == null)
+                    return BadRequest(new { error = "No CanOrder entries available. Provide canOrderId or create a CanOrder with OnDate/OffDate." });
+            }
+
+            // Resolve interval: use OnDate as start (or very early) and OffDate as end (or now)
+            var start = canOrder.OnDate?.Date ?? DateTime.MinValue;
+            var end = (canOrder.OffDate ?? DateTime.UtcNow).Date.AddDays(1).AddTicks(-1);
+
+            // Query order items joined with orders and products for Pending orders inside interval
+            var itemsQuery = from oi in _db.OrderItems
+                             join o in _db.Orders on oi.OrderId equals o.OrderId
+                             join p in _db.Products on oi.ProductId equals p.ProductId
+                             where o.OrderDate >= start && o.OrderDate <= end && o.Status == "Pending"
+                             select new
+                             {
+                                 oi.ProductId,
+                                 ProductName = p.Name,
+                                 Quantity = oi.Quantity,
+                                 ProductStock = p.Stock
+                             };
+
+            // Totals
+            var totalItemsOrdered = await itemsQuery.SumAsync(i => (int?)i.Quantity) ?? 0;
+            // total rollouts = sum(quantity * product.Stock)
+            var totalRolloutsLong = await itemsQuery.SumAsync(i => (long?)(i.Quantity * (long)i.ProductStock)) ?? 0L;
+            var totalRollouts = (decimal)totalRolloutsLong;
+
+            // breakdown per product (useful for auditing)
+            var perProduct = await itemsQuery
+                .GroupBy(i => new { i.ProductId, i.ProductName })
+                .Select(g => new
+                {
+                    ProductId = g.Key.ProductId,
+                    ProductName = g.Key.ProductName,
+                    TotalQuantity = g.Sum(x => x.Quantity),
+                    TotalRollouts = g.Sum(x => (long)x.Quantity * x.ProductStock)
+                })
+                .ToListAsync();
+
+            // Count only Pending orders in interval
+            var totalOrders = await _db.Orders.CountAsync(o => o.OrderDate >= start && o.OrderDate <= end && o.Status == "Pending");
+
+            // Per-7 recipe
+            const decimal ricePer7Grams = 300m;
+            const decimal waterPer7Ml = 400m;
+            const decimal vinegarPer7Ml = 60m;
+            const decimal sugarPer7Grams = 15m;
+            const decimal saltPer7Grams = 5m;
+
+            // Precise groups (fractional): totalRollouts / 7
+            var preciseGroups = totalRollouts / 7.0m;
+
+            // Integer full groups and remainder
+            var fullGroups = (long)(totalRolloutsLong / 7L);
+            var remainder = (long)(totalRolloutsLong % 7L);
+
+            // Ingredients computed proportionally (precise)
+            decimal requiredRiceGramsPrecise = preciseGroups * ricePer7Grams;
+            decimal requiredWaterMlPrecise = preciseGroups * waterPer7Ml;
+            decimal requiredVinegarMlPrecise = preciseGroups * vinegarPer7Ml;
+            decimal requiredSugarGramsPrecise = preciseGroups * sugarPer7Grams;
+            decimal requiredSaltGramsPrecise = preciseGroups * saltPer7Grams;
+
+            // Also keep the previous "rounded up" groups and totals for compatibility
+            var roundedUpGroups = Math.Ceiling(preciseGroups);
+            decimal requiredRiceGramsRounded = roundedUpGroups * ricePer7Grams;
+            decimal requiredWaterMlRounded = roundedUpGroups * waterPer7Ml;
+            decimal requiredVinegarMlRounded = roundedUpGroups * vinegarPer7Ml;
+            decimal requiredSugarGramsRounded = roundedUpGroups * sugarPer7Grams;
+            decimal requiredSaltGramsRounded = roundedUpGroups * saltPer7Grams;
+
+            return Ok(new
+            {
+                CanOrderId = canOrder.CanOrderId,
+                Interval = new { From = start, To = end },
+                TotalPendingOrders = totalOrders,
+                TotalItemsOrdered = totalItemsOrdered,
+                TotalRollouts = totalRolloutsLong,        // sum(quantity * product.Stock) as integer
+                FullGroups = fullGroups,                  // integer 7-groups
+                Remainder = remainder,                    // leftover rollouts after full groups
+                PreciseGroups = Math.Round(preciseGroups, 4), // fractional groups (rounded for display)
+                // precise proportional ingredient requirements
+                IngredientsPrecise = new
+                {
+                    Rice = new { Amount = Math.Round(requiredRiceGramsPrecise, 2), Unit = "g" },
+                    Water = new { Amount = Math.Round(requiredWaterMlPrecise, 2), Unit = "ml" },
+                    Vinegar = new { Amount = Math.Round(requiredVinegarMlPrecise, 2), Unit = "ml" },
+                    Sugar = new { Amount = Math.Round(requiredSugarGramsPrecise, 2), Unit = "g" },
+                    Salt = new { Amount = Math.Round(requiredSaltGramsPrecise, 2), Unit = "g" }
+                },
+                // legacy/rounded-up totals (if you still want to allocate full groups only)
+                IngredientsRoundedUp = new
+                {
+                    Rice = new { Amount = requiredRiceGramsRounded, Unit = "g" },
+                    Water = new { Amount = requiredWaterMlRounded, Unit = "ml" },
+                    Vinegar = new { Amount = requiredVinegarMlRounded, Unit = "ml" },
+                    Sugar = new { Amount = requiredSugarGramsRounded, Unit = "g" },
+                    Salt = new { Amount = requiredSaltGramsRounded, Unit = "g" }
+                },
+                PerProduct = perProduct
+            });
+        }
+
         // GET /api/admin/export/orders.csv?from=2025-01-01&to=2025-12-31
         [HttpGet("export/orders.csv")]
         public async Task<IActionResult> ExportOrdersCsv(DateTime? from = null, DateTime? to = null)

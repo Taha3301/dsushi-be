@@ -8,6 +8,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using System.IO;
+using System.Collections.Generic;
 
 namespace SushiBE.Controllers
 {
@@ -99,6 +100,7 @@ namespace SushiBE.Controllers
 
             // Save images into <ContentRoot>/wwwroot/Images so ASP.NET Core serves them at /Images/...
 
+            // exact folder
             var webroot = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
             var imagesFolder = Path.Combine(webroot, "Images");
             if (!Directory.Exists(imagesFolder))
@@ -116,10 +118,11 @@ namespace SushiBE.Controllers
                         await image.CopyToAsync(stream);
                     }
 
+                    // store consistent relative URL
                     product.Images.Add(new ProductImage
                     {
                         ProductImageId = Guid.NewGuid(),
-                        ImageUrl = $"SushiBE/wwwroot/Images/{fileName}"
+                        ImageUrl = $"/Images/{fileName}"
                     });
                 }
             }
@@ -177,17 +180,17 @@ namespace SushiBE.Controllers
                     if (dto.Images.Count > 8)
                         return BadRequest(new { error = "A maximum of 8 images is allowed." });
 
-                    // Determine images folder once
+                    // Determine images folder once (now points to wwwroot/Images)
                     var imagesFolder = GetImagesFolder();
 
-                    // Remove old images from DB and disk
-                    var oldImages = product.Images.ToList();
+                    // Load old images directly from DB (safer than relying only on navigation state)
+                    var oldImages = await _db.ProductImages.Where(pi => pi.ProductId == product.ProductId).ToListAsync();
                     if (oldImages.Any())
                     {
                         // Remove DB records
                         _db.ProductImages.RemoveRange(oldImages);
 
-                        // Delete physical files (use only file name to avoid path issues)
+                        // Delete physical files (resolve file name robustly)
                         foreach (var img in oldImages)
                         {
                             var fileName = Path.GetFileName(img.ImageUrl ?? string.Empty);
@@ -205,13 +208,16 @@ namespace SushiBE.Controllers
                                 }
                             }
                         }
+
+                        // Commit deletion before adding new images to avoid concurrency/order issues
+                        await _db.SaveChangesAsync();
                     }
 
                     // Ensure images folder exists
                     if (!Directory.Exists(imagesFolder))
                         Directory.CreateDirectory(imagesFolder);
 
-                    // Add new images
+                    // Add new images (save files then DB records)
                     var newImages = new List<ProductImage>();
                     foreach (var image in dto.Images)
                     {
@@ -229,16 +235,23 @@ namespace SushiBE.Controllers
                             {
                                 ProductImageId = Guid.NewGuid(),
                                 ProductId = product.ProductId,
-                                ImageUrl = $"/images/{fileName}"
+                                ImageUrl = $"/Images/{fileName}"
                             });
                         }
                     }
 
-                    product.Images = newImages;
-                    product.ImageUrl = product.Images.FirstOrDefault()?.ImageUrl;
+                    if (newImages.Any())
+                    {
+                        _db.ProductImages.AddRange(newImages);
+                        product.ImageUrl = newImages.First().ImageUrl;
+                    }
+                    else
+                    {
+                        product.ImageUrl = null;
+                    }
                 }
 
-                // 4️⃣ Save changes
+                // 4️⃣ Save changes (product + new images)
                 await _db.SaveChangesAsync();
 
                 return NoContent();
@@ -330,7 +343,9 @@ namespace SushiBE.Controllers
         // Add this private helper method inside the ProductController class
         private string GetImagesFolder()
         {
-            var imagesFolder = Path.Combine(Directory.GetCurrentDirectory(), "images");
+            // ensure we save into wwwroot/Images
+            var webroot = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+            var imagesFolder = Path.Combine(webroot, "Images");
             if (!Directory.Exists(imagesFolder))
                 Directory.CreateDirectory(imagesFolder);
             return imagesFolder;
@@ -347,6 +362,9 @@ namespace SushiBE.Controllers
                 return relativeUrl;
 
             var baseUrl = $"{request.Scheme}://{request.Host}";
+            // ensure leading slash
+            if (!relativeUrl.StartsWith("/"))
+                relativeUrl = "/" + relativeUrl;
             return $"{baseUrl}{relativeUrl}";
         }
     }
